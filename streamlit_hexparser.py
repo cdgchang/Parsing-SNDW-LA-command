@@ -109,3 +109,8 @@ if filepath:
                 st.dataframe(result)
             except Exception as e:
                 st.error(f"Query failed: {e}")
+
+        # ✅ 自動跳回 PowerShell（僅限 Windows）
+        if os.name == 'nt':
+            st.success("Returning control to PowerShell...")
+            os.system("start powershell")

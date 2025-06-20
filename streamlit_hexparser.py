@@ -12,6 +12,8 @@ st.title("Hex Data Log Viewer with Timestamp Filtering (Local File Mode)")
 filepath = st.text_input("Enter full path to your .txt log file (e.g., D:/logs/myfile.txt):")
 exclude_keyword = st.text_input("Exclude blocks containing keyword (e.g., Ping or Debug):", value="Ping")
 
+header_row = None
+
 if filepath:
     filepath = Path(filepath)
     if not filepath.exists():
@@ -19,7 +21,7 @@ if filepath:
     else:
         file_size = os.path.getsize(filepath)
         with st.spinner("Reading file line by line and excluding specified keywords..."):
-            parsed_data = []
+            raw_blocks = []
 
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -27,10 +29,14 @@ if filepath:
             match_count = 0
             buffer = []
 
-            output_df = pd.DataFrame()
-
             with open(filepath, "r", encoding="utf-8", errors='ignore') as f:
-                for line_num, line in enumerate(f, 1):
+                first_line = f.readline()
+                if not re.match(r"^\d{1,3}(\.\d+)?[ms]?\b", first_line.strip()):
+                    header_row = re.split(r' {2,}|\t+', first_line.strip())
+                else:
+                    f.seek(0)
+
+                for line_num, line in enumerate(f, 2):
                     line_bytes = len(line.encode('utf-8', errors='ignore'))
                     bytes_read += line_bytes
                     progress_ratio = bytes_read / file_size if file_size > 0 else 0
@@ -43,8 +49,7 @@ if filepath:
                         if buffer:
                             joined_block = ''.join(buffer)
                             if not re.search(fr"\b{re.escape(exclude_keyword)}\b", joined_block, re.IGNORECASE):
-                                block_rows = [re.split(r'\s{2,}', block_line.strip()) for block_line in buffer if block_line.strip() and any(re.split(r'\s{2,}', block_line.strip()))]
-                                parsed_data.extend(block_rows)
+                                raw_blocks.append(buffer[:])
                                 match_count += 1
                         buffer = []
                     buffer.append(line.strip())
@@ -52,47 +57,56 @@ if filepath:
                 if buffer:
                     joined_block = ''.join(buffer)
                     if not re.search(fr"\b{re.escape(exclude_keyword)}\b", joined_block, re.IGNORECASE):
-                        block_rows = [re.split(r'\s{2,}', block_line.strip()) for block_line in buffer if block_line.strip() and any(re.split(r'\s{2,}', block_line.strip()))]
-                        parsed_data.extend(block_rows)
+                        raw_blocks.append(buffer[:])
                         match_count += 1
 
             progress_bar.empty()
             status_text.text(f"Parsing complete. Matches found: {match_count}")
 
-        output_df = pd.DataFrame(parsed_data)
-        output_df = output_df.loc[(output_df != '').any(axis=1)]
-        output_df.index = [str(i+1) for i in range(len(output_df))]
-        output_df.columns = [f"col{i}" for i in range(output_df.shape[1])]
+        parsed_data = []
+        if header_row:
+            parsed_data.append(header_row)
 
-        st.subheader("Parsed Data Table")
-        columns_to_show = st.multiselect("Select columns to display:", output_df.columns.tolist(), default=output_df.columns.tolist())
-        st.dataframe(output_df[columns_to_show])
+        for block in raw_blocks:
+            for line in block:
+                parsed_data.append(re.split(r' {2,}|\t+', line.strip()))
 
-        csv = output_df[columns_to_show].to_csv(index=False)
-        st.download_button("Download parsed CSV", csv, "parsed_output.csv")
+        original_df = pd.DataFrame(parsed_data, dtype=object)
+        original_df = original_df.loc[(original_df != '').any(axis=1)]
+        original_df.index = [str(i+1) for i in range(len(original_df))]
 
-        st.subheader("Keyword Filter")
-        keyword = st.text_input("Filter rows that contain keyword (e.g., 0X1 or ACK):")
-        if keyword:
-            mask = output_df.apply(lambda row: row.astype(str).str.contains(keyword, case=False).any(), axis=1)
-            st.write(f"Filtered Rows containing '{keyword}':")
-            st.dataframe(output_df[mask][columns_to_show])
+        if "col36" in original_df.columns:
+            filtered_df = original_df[original_df["col36"].notna() & (original_df["col36"] != '')]
+            st.subheader("Filtered Rows with col36 Present")
+            st.dataframe(filtered_df)
+        else:
+            st.info("No col36 present in parsed data.")
 
-            csv = output_df[mask][columns_to_show].to_csv(index=False)
-            st.download_button("Download filtered CSV", csv, "filtered_output.csv")
+        st.subheader("Original Parsed Data Table (Raw 4-line Format)")
+        st.dataframe(original_df)
 
-        st.subheader("Advanced SQL Query (via DuckDB)")
-        query = st.text_area("Enter SQL (e.g., SELECT * FROM df WHERE col1 = 'BUS0(SoundWire)'):",
-                             "SELECT * FROM output_df LIMIT 10")
-        if st.button("Run Query"):
-            try:
-                con = duckdb.connect()
-                con.register("output_df", output_df)
-                result = con.execute(query).fetchdf()
-                st.dataframe(result)
-            except Exception as e:
-                st.error(f"Query failed: {e}")
+        csv_original = original_df.to_csv(index=False)
+        st.download_button("Download original 4-line CSV", csv_original, "parsed_output_4row.csv")
 
-        if os.name == 'nt':
-            st.success("Returning control to PowerShell...")
-            os.system("start powershell")
+        row_list = original_df.values.tolist()
+        two_line_data = []
+        for i in range(0, len(row_list), 6):
+            if i + 5 < len(row_list):
+                combined1 = row_list[i] + row_list[i+3]
+                combined2 = row_list[i+1] + row_list[i+4]
+                two_line_data.append(combined1)
+                two_line_data.append(combined2)
+
+        if two_line_data:
+            max_two_cols = max(len(row) for row in two_line_data)
+            two_line_df = pd.DataFrame(two_line_data, columns=[f"col{i}" for i in range(max_two_cols)])
+            two_line_df = two_line_df.loc[(two_line_df != '').any(axis=1)]
+            two_line_df.index = [str(i+1) for i in range(len(two_line_df))]
+
+            st.subheader("Parsed Data Table (2-row Format per Block)")
+            st.dataframe(two_line_df)
+
+            csv_two = two_line_df.to_csv(index=False)
+            st.download_button("Download parsed CSV (2-row format)", csv_two, "parsed_output_2row.csv")
+        else:
+            st.info("No valid blocks found for 2-row parsing.")

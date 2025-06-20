@@ -49,8 +49,8 @@ if filepath:
 
                     if is_timestamp:
                         if buffer:
-                            joined_block = '\n'.join(buffer)
-                            if not re.search(fr"\b{re.escape(exclude_keyword)}\b", joined_block, re.IGNORECASE):
+                            joined_block_words = '\n'.join(buffer).split()
+                            if not any(word.lower() == exclude_keyword.lower() for word in joined_block_words):
                                 raw_blocks.append(buffer[:])
                                 match_count += 1
                         buffer = [line.strip()]  # start new block with timestamp line only
@@ -59,8 +59,8 @@ if filepath:
                             buffer.append(line.strip())
 
                 if buffer:
-                    joined_block = '\n'.join(buffer)
-                    if not re.search(fr"\b{re.escape(exclude_keyword)}\b", joined_block, re.IGNORECASE):
+                    joined_block_words = '\n'.join(buffer).split()
+                    if not any(word.lower() == exclude_keyword.lower() for word in joined_block_words):
                         raw_blocks.append(buffer[:])
                         match_count += 1
 

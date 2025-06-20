@@ -31,10 +31,10 @@ if filepath:
 
             with open(filepath, "r", encoding="utf-8", errors='ignore') as f:
                 first_line = f.readline()
-                if not re.match(r"^\d{1,3}(\.\d+)?[ms]?\b", first_line.strip()):
-                    header_row = re.split(r' {2,}|\t+', first_line.strip())
+                if "TimeStamp" in first_line:
+                    f.seek(0)  # Valid header, reprocess from start
                 else:
-                    f.seek(0)
+                    st.warning("First line does not contain 'TimeStamp'. Skipping as non-log content.")
 
                 for line_num, line in enumerate(f, 2):
                     line_bytes = len(line.encode('utf-8', errors='ignore'))
@@ -45,17 +45,21 @@ if filepath:
                         progress_bar.progress(progress)
                         status_text.text(f"Processing line {line_num:,}... {progress}% | Matches found: {match_count}")
 
-                    if re.match(r"^\d+\.\d+[ms]?[\s\t]+", line):
+                    is_timestamp = "TimeStamp" in line
+
+                    if is_timestamp:
                         if buffer:
-                            joined_block = ''.join(buffer)
+                            joined_block = '\n'.join(buffer)
                             if not re.search(fr"\b{re.escape(exclude_keyword)}\b", joined_block, re.IGNORECASE):
                                 raw_blocks.append(buffer[:])
                                 match_count += 1
-                        buffer = []
-                    buffer.append(line.strip())
+                        buffer = [line.strip()]  # start new block with timestamp line only
+                    else:
+                        if buffer and buffer[0].startswith("TimeStamp"):
+                            buffer.append(line.strip())
 
                 if buffer:
-                    joined_block = ''.join(buffer)
+                    joined_block = '\n'.join(buffer)
                     if not re.search(fr"\b{re.escape(exclude_keyword)}\b", joined_block, re.IGNORECASE):
                         raw_blocks.append(buffer[:])
                         match_count += 1

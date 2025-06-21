@@ -19,53 +19,60 @@ if filepath:
     if not filepath.exists():
         st.error("File not found. Please check the path.")
     else:
-        file_size = os.path.getsize(filepath)
-        with st.spinner("Reading file line by line and excluding specified keywords..."):
-            raw_blocks = []
+        # 檢查是否已有解析過的結果，若無則執行 parsing
+        if 'raw_blocks' not in st.session_state or st.session_state.get("last_parsed_file") != str(filepath):
+            file_size = os.path.getsize(filepath)
+            with st.spinner("Reading file line by line and excluding specified keywords..."):
+                raw_blocks = []
 
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            bytes_read = 0
-            match_count = 0
-            buffer = []
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                bytes_read = 0
+                match_count = 0
+                buffer = []
 
-            with open(filepath, "r", encoding="utf-8", errors='ignore') as f:
-                first_line = f.readline()
-                if "TimeStamp" in first_line:
-                    f.seek(0)  # Valid header, reprocess from start
-                else:
-                    st.warning("First line does not contain 'TimeStamp'. Skipping as non-log content.")
-
-                for line_num, line in enumerate(f, 2):
-                    line_bytes = len(line.encode('utf-8', errors='ignore'))
-                    bytes_read += line_bytes
-                    progress_ratio = bytes_read / file_size if file_size > 0 else 0
-                    progress = min(100, int(progress_ratio * 100))
-                    if line_num % 500 == 0:
-                        progress_bar.progress(progress)
-                        status_text.text(f"Processing line {line_num:,}... {progress}% | Matches found: {match_count}")
-
-                    is_timestamp = "TimeStamp" in line
-
-                    if is_timestamp:
-                        if buffer:
-                            joined_block_words = '\n'.join(buffer).split()
-                            if not any(word.lower() == exclude_keyword.lower() for word in joined_block_words):
-                                raw_blocks.append(buffer[:])
-                                match_count += 1
-                        buffer = [line.strip()]  # start new block with timestamp line only
+                with open(filepath, "r", encoding="utf-8", errors='ignore') as f:
+                    first_line = f.readline()
+                    if "TimeStamp" in first_line:
+                        f.seek(0)  # Valid header, reprocess from start
                     else:
-                        if buffer and buffer[0].startswith("TimeStamp"):
-                            buffer.append(line.strip())
+                        st.warning("First line does not contain 'TimeStamp'. Skipping as non-log content.")
 
-                if buffer:
-                    joined_block_words = '\n'.join(buffer).split()
-                    if not any(word.lower() == exclude_keyword.lower() for word in joined_block_words):
-                        raw_blocks.append(buffer[:])
-                        match_count += 1
+                    for line_num, line in enumerate(f, 2):
+                        line_bytes = len(line.encode('utf-8', errors='ignore'))
+                        bytes_read += line_bytes
+                        progress_ratio = bytes_read / file_size if file_size > 0 else 0
+                        progress = min(100, int(progress_ratio * 100))
+                        if line_num % 500 == 0:
+                            progress_bar.progress(progress)
+                            status_text.text(f"Processing line {line_num:,}... {progress}% | Matches found: {match_count}")
 
-            progress_bar.empty()
-            status_text.text(f"Parsing complete. Matches found: {match_count}")
+                        is_timestamp = "TimeStamp" in line
+
+                        if is_timestamp:
+                            if buffer:
+                                joined_block_words = '\n'.join(buffer).split()
+                                if not any(word.lower() == exclude_keyword.lower() for word in joined_block_words):
+                                    raw_blocks.append(buffer[:])
+                                    match_count += 1
+                            buffer = [line.strip()]  # start new block with timestamp line only
+                        else:
+                            if buffer and buffer[0].startswith("TimeStamp"):
+                                buffer.append(line.strip())
+
+                    if buffer:
+                        joined_block_words = '\n'.join(buffer).split()
+                        if not any(word.lower() == exclude_keyword.lower() for word in joined_block_words):
+                            raw_blocks.append(buffer[:])
+                            match_count += 1
+
+                progress_bar.empty()
+                status_text.text(f"Parsing complete. Matches found: {match_count}")
+
+            st.session_state.raw_blocks = raw_blocks
+            st.session_state.last_parsed_file = str(filepath)
+        else:
+            raw_blocks = st.session_state.raw_blocks
 
         parsed_data = []
         if header_row:
@@ -94,6 +101,7 @@ if filepath:
 
         # 根據 raw_blocks 做 2-row 組合：6 行的 block 做合併，其餘保留原樣
         two_line_data = []
+        count_6_line = 0
         for block in raw_blocks:
             parsed_block = [re.split(r' {2,}|\t+', line.strip()) for line in block]
             if len(parsed_block) == 6:
@@ -101,6 +109,7 @@ if filepath:
                 combined2 = parsed_block[1] + parsed_block[4]
                 two_line_data.append(combined1)
                 two_line_data.append(combined2)
+                count_6_line += 1
             else:
                 two_line_data.extend(parsed_block)  # 其餘 block 保留原樣
 
@@ -115,5 +124,14 @@ if filepath:
 
             csv_two = two_line_df.to_csv(index=False)
             st.download_button("Download parsed CSV (2-row format)", csv_two, "parsed_output_2row.csv")
+
+            # 額外統計資訊顯示
+            total_blocks = len(raw_blocks)
+            st.markdown(f"""
+            ### Block Statistics
+            - 🧩 Total blocks: **{total_blocks}**
+            - ✅ 6-line blocks merged: **{count_6_line}** ({(count_6_line/total_blocks)*100:.1f}%)
+            - 📄 Other blocks (raw): **{total_blocks - count_6_line}** ({((total_blocks - count_6_line)/total_blocks)*100:.1f}%)
+            """)
         else:
             st.info("No data found for 2-row or raw block parsing.")

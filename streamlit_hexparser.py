@@ -92,14 +92,17 @@ if filepath:
         csv_original = original_df.to_csv(index=False)
         st.download_button("Download original 4-line CSV", csv_original, "parsed_output_4row.csv")
 
-        row_list = original_df.values.tolist()
+        # 根據 raw_blocks 做 2-row 組合：6 行的 block 做合併，其餘保留原樣
         two_line_data = []
-        for i in range(0, len(row_list), 6):
-            if i + 5 < len(row_list):
-                combined1 = row_list[i] + row_list[i+3]
-                combined2 = row_list[i+1] + row_list[i+4]
+        for block in raw_blocks:
+            parsed_block = [re.split(r' {2,}|\t+', line.strip()) for line in block]
+            if len(parsed_block) == 6:
+                combined1 = parsed_block[0] + parsed_block[3]
+                combined2 = parsed_block[1] + parsed_block[4]
                 two_line_data.append(combined1)
                 two_line_data.append(combined2)
+            else:
+                two_line_data.extend(parsed_block)  # 其餘 block 保留原樣
 
         if two_line_data:
             max_two_cols = max(len(row) for row in two_line_data)
@@ -107,10 +110,10 @@ if filepath:
             two_line_df = two_line_df.loc[(two_line_df != '').any(axis=1)]
             two_line_df.index = [str(i+1) for i in range(len(two_line_df))]
 
-            st.subheader("Parsed Data Table (2-row Format per Block)")
+            st.subheader("Parsed Data Table (2-row Format Mixed: merged + raw blocks)")
             st.dataframe(two_line_df)
 
             csv_two = two_line_df.to_csv(index=False)
             st.download_button("Download parsed CSV (2-row format)", csv_two, "parsed_output_2row.csv")
         else:
-            st.info("No valid blocks found for 2-row parsing.")
+            st.info("No data found for 2-row or raw block parsing.")

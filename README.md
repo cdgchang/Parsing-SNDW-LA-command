@@ -1,5 +1,5 @@
-🧾 Hex Log Parser (Streamlit App)
-This is an interactive web-based application built with Streamlit. It parses and visualizes .txt Hex log files with block separation, keyword filtering, data table output, and CSV export capabilities.
+🧾 ZeroPlus LA Log Parser (Streamlit App)
+This is an interactive web-based application built with Streamlit. It parses and visualizes .txt SNDW Command log files with block separation, keyword filtering, data table output, and CSV export capabilities.
 
 📂 Features
 ✅ Input & Filtering

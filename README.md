@@ -43,15 +43,13 @@ duckdb is imported for potential SQL-style queries (not active in current versio
 
 🚀 How to Run
 1. Install dependencies
-bash
-複製
-編輯
+
 pip install streamlit pandas duckdb
 2. Launch the App
-bash
-複製
-編輯
-streamlit run streamlit_hexparser.py
+
+powershell by commandline : streamlit run streamlit_hexparser.py
+select the txt from LA log 
+
 📥 Output Files
 parsed_output_4row.csv: Raw block-parsed data table
 
@@ -61,6 +59,8 @@ parsed_output_2row.csv: Processed 2-row format table with merged 6-line blocks
 The log file must contain "TimeStamp" markers to separate blocks
 
 Keyword filtering is case-insensitive and excludes any block containing the keyword
+
+usually, for filter out the non-command by "Ping"
 
 For large files, progress is shown while parsing (by bytes read)
 
